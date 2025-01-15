@@ -1,6 +1,7 @@
 import os
 from math_util import *
 
+CHECK_DIGIT = True
 rm_stat = {}
 
 
@@ -33,7 +34,9 @@ def process_fn(d, idx, check_type=False):
 
     subset = d["source"]
     problem = d["problem"].lower()
-    is_matched, extracted_model_output = match_answer(d["solution"])
+    is_matched, extracted_model_output = match_answer(
+        d["solution"], check_digit=CHECK_DIGIT
+    )
 
     if check_type:
         if "figure" in problem:

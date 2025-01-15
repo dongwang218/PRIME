@@ -35,7 +35,9 @@ class RateLimiter:
 
 
 class MathProblemValidator:
-    def __init__(self, model_path: str, tp_size: int, try_num: int, use_fp8):
+    def __init__(
+        self, model_path: str, base_url: str, tp_size: int, try_num: int, use_fp8
+    ):
         if use_fp8:
             self.tokenizer = AutoTokenizer.from_pretrained(model_path)
             self.llm = LLM(
@@ -45,10 +47,10 @@ class MathProblemValidator:
                 quantization="fp8",
             )
         else:
-            if "gemini" in model_path:
+            if base_url:
                 self.client = OpenAI(
                     api_key="<api_key>",
-                    base_url="<base_url>",
+                    base_url=base_url,
                 )
             else:
                 self.tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -136,10 +138,10 @@ Analysis Required:
         elif source == "olympiads":
             return self.create_olympiads_prompt(problem)
 
-    def chat_complete(self, messages):
+    def chat_complete(self, model_path, messages):
         self.rate_limiter.wait()
         response = self.client.chat.completions.create(
-            model="gemini-2.0-flash-thinking-exp-1219",
+            model=model_path,  # "gemini-2.0-flash-thinking-exp-1219",
             messages=messages,
             temperature=0.8,
             max_completion_tokens=16384,
@@ -148,7 +150,9 @@ Analysis Required:
         content = response.choices[0].message.content
         return content.strip()
 
-    def generate_gemini_solutions(self, source, problem_list: List[str]) -> List[str]:
+    def generate_gemini_solutions(
+        self, model_path, source, problem_list: List[str]
+    ) -> List[str]:
         # Create prompts
         prompts = []
         for problem in problem_list:
@@ -162,7 +166,7 @@ Analysis Required:
 
         def process(prompt, idx):
             try:
-                solution = self.chat_complete(prompt)
+                solution = self.chat_complete(model_path, prompt)
                 return idx, solution
             except Exception as e:
                 return idx, f"Error: {str(e)}"
@@ -340,7 +344,6 @@ def main():
     # Qwen2.5-Math-72B-Instruct
     # QwQ-32B-Preview
     # gemini-2.0-flash-thinking-exp
-    MAX_NUM = 10000  # TODO
     parser.add_argument("--turn", type=int, default=2)  # TODO
     parser.add_argument("--data_subset", type=str, default="olympiads")  # TODO
     parser.add_argument("--use_fp8", type=bool, default=False)  # TODO
@@ -355,6 +358,9 @@ def main():
         "--tensor_parallel_size", type=int, default=torch.cuda.device_count()
     )
     parser.add_argument("--try_num", type=int, default=5)
+    parser.add_argument("--max_num", type=int, default=10)
+    parser.add_argument("--base_url", type=str, default=None)
+
     args = parser.parse_args()
 
     args.output_path = os.path.join(args.output_path, args.data_subset)
@@ -365,7 +371,11 @@ def main():
 
     # Initialize components
     validator = MathProblemValidator(
-        args.model_path, args.tensor_parallel_size, args.try_num, args.use_fp8
+        args.model_path,
+        args.base_url,
+        args.tensor_parallel_size,
+        args.try_num,
+        args.use_fp8,
     )
     processor = DataProcessor(args.input_file, args.output_path)
 
@@ -379,13 +389,15 @@ def main():
             continue
         print(f"Processing {source}...")
         print(f"Saving to {args.output_path}...")
-        data = data[(args.turn * MAX_NUM) : ((args.turn + 1) * MAX_NUM)]
-        print(f"Running from {args.turn * MAX_NUM} to {(args.turn + 1) * MAX_NUM}...")
+        data = data[(args.turn * args.max_num) : ((args.turn + 1) * args.max_num)]
+        print(
+            f"Running from {args.turn * args.max_num} to {(args.turn + 1) * args.max_num}..."
+        )
         num_questions = len(data)
 
-        if "gemini" in args.model_path:
+        if args.base_url is not None:
             attempts = validator.generate_gemini_solutions(
-                source, [item["prompt"] for item in data]
+                args.model_path, source, [item["prompt"] for item in data]
             )
         else:
             attempts = validator.generate_solutions(

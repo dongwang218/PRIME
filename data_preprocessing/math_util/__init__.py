@@ -336,7 +336,7 @@ def _last_boxed_only_string(string):
     return string[left_brace_idx + 1 : right_brace_idx].strip()
 
 
-def match_answer(response, check_digit=False):
+def match_answer(response, check_digit=True):
     is_matched = False
     # for ans_marker in ['answer:', "answer is", "answers are"]:
     #     ans_idx = response.lower().rfind(ans_marker)
